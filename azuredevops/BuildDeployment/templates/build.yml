@@ -1,0 +1,44 @@
+  jobs:
+  - job: BuildAndPublishJob
+    displayName: 'Build and Publish Server'
+    steps:
+
+    - task: UseDotNet@2
+      displayName: 'Install .NET Core SDK'
+      inputs:
+        version: 8.x
+        performMultiLevelLookup: true
+        includePreviewVersions: true # Required for preview versions
+
+    # Backend Function 
+    - task: DotNetCoreCLI@2
+      displayName: 'Build : Guardian Backend Function'
+      inputs:
+        command: 'build'
+        projects: '$(projectPathBackendFunction)'
+        arguments: '--configuration $(buildConfiguration)'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Publish : Guardian Backend Function'
+      inputs:
+        command: 'publish'
+        projects: '$(projectPathBackendFunction)'
+        publishWebProjects: false
+        arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/Guardian.Backend.Function/'
+        zipAfterPublish: true
+
+    # Workspace Api
+    - task: DotNetCoreCLI@2
+      displayName: 'Publish : Guardian Workspace Api'
+      inputs:
+        command: 'publish'
+        projects: '$(projectPathWorkspacesApi)'
+        publishWebProjects: false
+        arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/Guardian.Workspaces.Api/'
+        zipAfterPublish: true
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifacts'
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        artifactName: '$(appArtifactsFolder)' 

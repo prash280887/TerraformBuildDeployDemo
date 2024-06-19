@@ -1,0 +1,64 @@
+ jobs:
+  - deployment: InitializeServer
+    pool:
+     name: ${{parameters.deployAgentPoolName}}
+    environment: ${{parameters.env}}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: echo '##vso[task.setvariable variable=env]${{parameters.env}}'
+            displayName: 'Initialize & Set Environment Variable'
+
+          - powershell: |
+              $date=$(Get-Date -Format g);
+              Write-Host "##vso[task.setvariable variable=creationDate]$date"
+            displayName: 'Set Date Tag'
+
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Build Artifacts'
+            inputs:
+              artifactName: $(appArtifactsFolder)
+              downloadPath: '$(agent.builddirectory)'
+              buildType: 'current'
+              downloadType: 'single'
+            continueOnError: true
+
+
+          # - task: AzureRmWebAppDeployment@4
+          #   displayName: 'Deploy : Guardian Web Api'
+          #   condition: and(succeeded(), eq(${{parameters.param_DEV_Deploy_WebApi}}, true))
+          #   inputs:
+          #     azureSubscription: '${{parameters.azureSubscription}}'
+          #     appType: 'webApp'
+          #     WebAppName: '$(webApiAppServiceName)'
+          #     packageForLinux: '$(webApiPackagePath)'
+          #     enableCustomDeployment: true
+          #     ResourceGroupName: '$(resourceGroupName)'
+          #     SlotName: 'production'
+          #     TakeAppOfflineFlag: true
+          #     removeAdditionalFilesFlag: true
+          #   continueOnError: true
+
+          - task: AzureCLI@2
+            condition: and(succeeded(), eq(${{parameters.param_DEV_Deploy_BackendFunctionApp}}, true))
+            displayName: 'Deploy : Guardian Backend Function'
+            inputs:
+              azureSubscription: '${{parameters.azureSubscription}}'
+              scriptType: 'ps'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                az functionapp deployment source config-zip --resource-group $(resourceGroupName) --name $(backendFunctionAppName) --src $(backendFunctionAppPackagePath)
+            continueOnError: true
+
+            
+          - task: AzureCLI@2
+            displayName: 'Deploy : Guardian Workspaces Api'
+            condition: and(succeeded(), eq(${{parameters.param_DEV_Deploy_WorkspacesApi}}, true))
+            inputs:
+              azureSubscription: '${{parameters.azureSubscription}}'
+              scriptType: 'ps'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                  az webapp deploy -g $(resourceGroupName) -n $(workspaceApiAppServiceName) --src-path $(workspacesApiPackagePath)
+

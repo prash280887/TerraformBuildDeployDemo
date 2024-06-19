@@ -1,0 +1,54 @@
+ jobs:
+  - deployment: InitializeClient
+    pool:
+     name: ${{parameters.deployAgentPoolName}}
+    environment: ${{parameters.env}}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - script: echo '##vso[task.setvariable variable=env]${{parameters.env}}'
+            displayName: 'Initialize & Set Environment Variable'
+
+          - powershell: |
+              $date=$(Get-Date -Format g);
+              Write-Host "##vso[task.setvariable variable=creationDate]$date"
+            displayName: 'Set Date Tag'
+
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Build Artifacts'
+            inputs:
+              artifactName: $(appArtifactsFolderClient)
+              downloadPath: '$(agent.builddirectory)'
+              buildType: 'current'
+              downloadType: 'single'
+            continueOnError: true
+
+          - task: AzureCLI@2
+            displayName: 'Deploy : Guardian Web Api'
+            condition: and(succeeded(), eq(${{parameters.param_DEV_Deploy_WebApi}}, true))
+            inputs:
+              azureSubscription: '${{parameters.azureSubscription}}'
+              scriptType: 'ps'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                  az webapp deploy -g $(resourceGroupName) -n $(webApiAppServiceName) --src-path $(webApiPackagePath)
+
+          - task: AzureCLI@2
+            displayName: 'Get StaticWebApp DeployToken'
+            condition: and(succeeded(), eq(${{parameters.param_DEV_Deploy_StaticWebApp}}, true))
+            inputs:
+              azureSubscription: '${{parameters.azureSubscription}}'
+              scriptType: 'ps'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                  $token = az staticwebapp secrets list --name $(webClientStaticAppServiceName) -o tsv --query "properties.apiKey"
+                  echo '##vso[task.setvariable variable=deployment_token]$token'
+
+          - script: |
+              npm install -g @azure/static-web-apps-cli
+              swa deploy $(webClientDeployAppPackagePath) --env production --deployment-token $deployment_token --verbose=silly
+            displayName: 'Deploy : Guardian Static Web App'
+            env:
+              SWA_CLI_DEPLOYMENT_TOKEN: $(deployment_token)
+

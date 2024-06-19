@@ -1,0 +1,66 @@
+  jobs:
+  - job: BuildAndPublishJob
+    displayName: 'Build and Publish Client'
+    steps:
+
+    - task: UseDotNet@2
+      displayName: 'Install .NET Core SDK'
+      inputs:
+        version: 8.x
+        performMultiLevelLookup: true
+        includePreviewVersions: true # Required for preview versions
+
+ # WEB client
+    
+    - task: Npm@1
+      displayName: 'Run NPM : Guardian Web App client'
+      inputs:
+        command: custom
+        workingDir: $(webClientAppWorkingDirectory)
+        verbose: true
+        customCommand: 'install --force'
+
+    - task: Npm@1
+      displayName: 'Build : Guardian Web App client'
+      inputs:
+        command: custom
+        workingDir: $(webClientAppWorkingDirectory)
+        verbose: true
+        customCommand: 'run build' 
+
+    - task: CopyFiles@2
+      displayName: 'Copy : Guardian Web App client build'
+      inputs:
+          SourceFolder: $(webClientAppWorkingDirectory)/build
+          Contents: '**'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)/Guardian.Web/build'
+
+    # - task: ArchiveFiles@2
+    #   displayName: 'Archive : Guardian Web App client build'
+    #   inputs:
+    #     rootFolderOrFile: '$(webClientAppWorkingDirectory)/build'
+    #     archiveType: 'zip'
+    #     archiveFile: $(webClientAppPackagePath)
+    #     includeRootFolder: false
+#WEB API
+    - task: DotNetCoreCLI@2
+      displayName: 'Build : Guardian Web Api'
+      inputs:
+        command: 'build'
+        projects: '$(projectPathWebApi)'
+        arguments: '--configuration $(buildConfiguration)'
+
+    - task: DotNetCoreCLI@2
+      displayName: 'Publish : Guardian Web Api'
+      inputs:
+        command: 'publish'
+        projects: '$(projectPathWebApi)'
+        publishWebProjects: false
+        arguments: '--configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/Guardian.Web.Api/'
+        zipAfterPublish: true
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifacts'
+      inputs:
+        pathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        artifactName: '$(appArtifactsFolderClient)' 

@@ -1,0 +1,32 @@
+################################################################
+# This is only for static strings that are not sensitive
+# Need to add the variable map to the terraformSecretMapper
+# parameter in the template call if a sensitive value is passed
+################################################################
+variables:
+  # You can inject pipeline wide variables here
+
+  # You can also inject environment specific variables
+  # The reserved variable name is: AJG_IAC_{environment name}
+  # Examples:
+  # AJG_IAC_dev_Target: Somevalue
+  # AJG_IAC_test_Target: Sometestvalue
+
+  # If you are using pretty terraform plans, you need to set the AJG_IAC_TERRAFORMPLAN_SERVICE_CONNECTION_{environment} variable in order to inject the proper environment into the plan
+  AJG_IAC_TERRAFORMPLAN_SERVICE_CONNECTION_dev: IaC-Default-AI-Accelerator-dev
+  AJG_IAC_TERRAFORMPLAN_SERVICE_CONNECTION_test: IaC-Default-AI-Accelerator-test
+  AJG_IAC_TERRAFORMPLAN_SERVICE_CONNECTION_prod: IaC-Default-AI-Accelerator-prod
+
+  # Skip YOR Tagging for the following resources
+  YOR_SKIP_RESOURCE_TYPES: azurerm_api_management_named_value
+
+  ## All injected service connections must have a naming convention
+  ## AJG_IaC_{name of connection}_{environment}
+  ## Examples
+  ## AJG_IaC_AzureConnection_dev
+  ## AJG_IaC_Aws_dev
+  ## This is only required if you are not using "pretty" or "simple" terraform plans
+  ## Examples
+  ## AJG_IaC_AzureConnection_dev: IaC-Default-AI-Accelerator-dev
+  ## AJG_IaC_AzureConnection_test: IaC-Default-AI-Accelerator-test
+  ## AJG_IaC_AzureConnection_prod: IaC-Default-AI-Accelerator-prod

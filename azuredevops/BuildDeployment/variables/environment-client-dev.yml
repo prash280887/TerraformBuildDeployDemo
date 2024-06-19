@@ -1,0 +1,16 @@
+variables :
+  env : 'dev'
+  azureSubscription : 'corp-AIUtility-dev-cicd'
+  deployAgentPoolName : 'ajg-corp-dev-win-agent' 
+
+#Resource Name conventions common to all azure environments 
+  serviceConnection : ''
+  userRepository : ''
+  resourceinfix : 'aiutility'
+  regionshortname : 'eus2'
+  resourceGroupName : 'corp-${{ variables.resourceinfix }}-main-rg' 
+
+  webApiAppServiceName : 'corp-${{ variables.resourceinfix }}-web-${{ variables.env }}' #'aiutility-dev-api.ajgco.com' #  
+  webClientStaticAppServiceName : 'corp-${{ variables.resourceinfix }}-staticwebapp-${{ variables.env }}'  
+  
+ 

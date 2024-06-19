@@ -1,0 +1,46 @@
+variables:
+  env : 'dev'
+  envinitials : 'd'
+  azureSubscription : 'corp-AIUtility-dev-cicd'
+  deployAgentPoolName : 'ajg-corp-dev-win-agent'
+
+  projectPathApim: '**/Guardian.Apim'
+
+  projectPathWebApi: '**/Guardian.Web.Api.csproj'
+  projectPathWebClient: '**/Guardian.Web.Client.csproj'
+  projectPathWeb: '**/Guardian.Web.*.csproj'
+
+  projectPathBackendApi: '**/Guardian.Backend.Api.csproj'
+  projectPathBackendFunction: '**/Guardian.Backend.Function.csproj'
+  projectPathBackendService: '**/Guardian.Backend.Service.csproj'
+  projectPathBackend: '**/Guardian.Backend.*.csproj'
+
+  projectPathBotApi: '**/Guardian.Bot.Api.csproj'
+  projectPathBotServices: '**/Guardian.Bot.Service.csproj'
+  projectPathBotTeamsAppManifest: '**/Guardian.Bot.TeamsAppManifest'
+  projectPathBot: '**/Guardian.Bot.*.csproj'
+
+  projectPathCli : '**/Guardian.Cli.csproj'
+
+  projectPathWorkspacesApi: '**/Guardian.Workspaces.Api.csproj'
+  projectPathWorkspacesDocumentProcessor: '**/Guardian.Workspaces.DocumentProcessor'
+  projectPathWorkspaces: '**/Guardian.Workspaces.*.csproj'
+
+  projectPath: '**/*.sln'
+  appArtifactsFolderClient: 'dropClient'
+  appArtifactsFolder: 'dropServer'
+  buildConfiguration : 'Release'
+
+  #package paths
+  #client
+  webClientAppWorkingDirectory : '$(Build.SourcesDirectory)/src/Guardian.Web/client'
+  webClientAppBuildPackagePath : '$(Build.ArtifactStagingDirectory)/Guardian.Web/build.zip' 
+  webClientAppPackagePath : '$(Build.ArtifactStagingDirectory)/Guardian.Web/build'
+  webClientAppZipPackagePath : '$(agent.builddirectory)/$(appArtifactsFolderClient)/Guardian.Web/build.zip'
+  webClientDeployAppPackagePath : '$(agent.builddirectory)/$(appArtifactsFolderClient)/Guardian.Web/build'
+  webApiPackagePath : '$(agent.builddirectory)/$(appArtifactsFolderClient)/Guardian.Web.Api/Guardian.Web.Api.zip'
+
+ #server
+  backendFunctionAppPackagePath : '$(agent.builddirectory)/$(appArtifactsFolder)/Guardian.Backend.Function/src.zip'
+  workspacesApiPackagePath : '$(agent.builddirectory)/$(appArtifactsFolder)/Guardian.Workspaces.Api/Guardian.Workspaces.Api.zip'
+

@@ -1,0 +1,90 @@
+name: AI-Accelerator Build Deployment
+
+variables:
+  - template: /.azuredevops/BuildDeployment/variables/package.yml
+
+parameters:
+- name: param_DEV_Deploy_WebApi
+  displayName: DEV_Deploy_WebApi
+  type: boolean
+  default: true
+
+- name: param_DEV_Deploy_StaticWebApp
+  displayName: DEV_Deploy_StaticWebApp
+  type: boolean
+  default: true
+
+- name: param_DEV_Deploy_BackendFunctionApp
+  displayName: DEV_Deploy_BackendFunctionApp
+  type: boolean
+  default: true
+
+- name:   param_DEV_Deploy_WorkspacesApi
+  displayName: DEV_Deploy_WorkspacesApi
+  type: boolean
+  default: true
+
+trigger:
+ branches:
+   include:
+     - feature/build-deploy
+     - main
+     
+
+stages:
+    - stage: Initialize
+      jobs:
+      - job: InitializeAgent
+        pool:
+          vmImage: 'windows-latest'
+        steps:
+        - script: echo 'Initialization completed'
+
+    - stage: Build_App_Client
+      jobs:
+        - template: /.azuredevops/BuildDeployment/templates/build-client.yml
+      dependsOn:
+      - Initialize
+      condition: succeeded('Initialize')
+
+    - stage: Build_App_Server
+      jobs:
+        - template: /.azuredevops/BuildDeployment/templates/build.yml
+      dependsOn:
+      - Initialize
+      condition: succeeded('Initialize')
+
+
+    - stage: Deploy_App_Client
+      variables:  
+        - template: /.azuredevops/BuildDeployment/variables/environment-client-dev.yml
+      jobs:
+        - template: /.azuredevops/BuildDeployment/templates/deploy-client.yml
+          parameters:
+            env: ${{ variables.env }}
+            azureSubscription : ${{ variables.azureSubscription }}
+            deployAgentPoolName : ${{ variables.deployAgentPoolName }}
+            param_DEV_Deploy_WebApi  :  ${{parameters.param_DEV_Deploy_WebApi}}
+            param_DEV_Deploy_StaticWebApp  :  ${{parameters.param_DEV_Deploy_StaticWebApp}}
+            param_DEV_Deploy_BackendFunctionApp  :  ${{parameters.param_DEV_Deploy_BackendFunctionApp}}
+            param_DEV_Deploy_WorkspacesApi :  ${{parameters.param_DEV_Deploy_WorkspacesApi}}
+      dependsOn:
+      - Build_App_Client
+      condition: succeeded('Build_App_Client')
+
+    - stage: Deploy_App_Server
+      variables:       
+        - template: /.azuredevops/BuildDeployment/variables/environment-dev.yml
+      jobs:
+        - template: /.azuredevops/BuildDeployment/templates/deploy.yml
+          parameters:
+            env: ${{ variables.env }}
+            azureSubscription : ${{ variables.azureSubscription }}
+            deployAgentPoolName : ${{ variables.deployAgentPoolName }}
+            param_DEV_Deploy_WebApi  :  ${{parameters.param_DEV_Deploy_WebApi}}
+            param_DEV_Deploy_StaticWebApp  :  ${{parameters.param_DEV_Deploy_StaticWebApp}}
+            param_DEV_Deploy_BackendFunctionApp  :  ${{parameters.param_DEV_Deploy_BackendFunctionApp}}
+            param_DEV_Deploy_WorkspacesApi :  ${{parameters.param_DEV_Deploy_WorkspacesApi}}
+      dependsOn:
+      - Build_App_Server
+      condition: succeeded('Build_App_Server')

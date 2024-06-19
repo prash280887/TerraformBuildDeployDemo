@@ -1,0 +1,28 @@
+trigger:
+ branches:
+   exclude:
+   - master
+   - main
+   - dev
+   - test
+
+resources:
+  repositories:
+    - repository: iac-pipeline
+      type: git
+      name: GTS-InfrastructureAsCode-CenterOfExcellence\Pipeline-GenericInfrastructureDeployment
+      ref: refs/heads/release
+      endpoint: IaC-CoE-Connection-AI Utility
+
+variables:
+- group: Terraform-Team-Read-Authorization-corp_clients
+- template: infra-variables.yml
+
+extends:
+  template: continuous-integration.yml@iac-pipeline
+  parameters:
+    repositoryName: AI-Accelerator
+    version: v2
+    poolName: AgentPool-AJGCORPUSDEV-d5a8d1ec-f54e-4817-ae6b-0df8fa098e21
+    terraformSecretMapper:
+      TF_TOKEN_app_terraform_io: $(READ_TFE_TOKEN)
