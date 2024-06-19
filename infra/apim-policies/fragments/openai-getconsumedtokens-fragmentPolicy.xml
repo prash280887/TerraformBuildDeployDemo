@@ -1,0 +1,144 @@
+<fragment>
+    <choose>
+        <!-- If sucess and json -->
+        <when condition="@(context.Response != null && context.Response.StatusCode >= 200 && context.Response.StatusCode < 300 && context.Response.Body.As<string>(preserveContent: true).StartsWith("{"))">
+            <set-variable name="aiutility-consumedprompttokens" value="@{
+              JObject response = context.Response != null && context.Response.StatusCode >= 200 && context.Response.StatusCode < 300
+              ? context.Response.Body.As<JObject>(preserveContent: true)
+              : null;
+              if(response != null
+                  && response.TryGetValue("usage", StringComparison.OrdinalIgnoreCase, out var usageField)
+                  && usageField is JObject usageFieldObj
+                  && usageFieldObj.TryGetValue("prompt_tokens", StringComparison.OrdinalIgnoreCase, out var tokensField)) {
+                  return tokensField.Value<int>();
+              }
+              return 0;
+          }" />
+            <set-variable name="aiutility-consumedcompletiontokens" value="@{
+              JObject response = context.Response != null && context.Response.StatusCode >= 200 && context.Response.StatusCode < 300
+              ? context.Response.Body.As<JObject>(preserveContent: true)
+              : null;
+              if(response != null
+                  && response.TryGetValue("usage", StringComparison.OrdinalIgnoreCase, out var usageField)
+                  && usageField is JObject usageFieldObj
+                  && usageFieldObj.TryGetValue("completion_tokens", StringComparison.OrdinalIgnoreCase, out var tokensField)) {
+                  return tokensField.Value<int>();
+              }
+              return 0;
+          }" />
+            <set-variable name="aiutility-consumedtotaltokens" value="@{
+              JObject response = context.Response != null && context.Response.StatusCode >= 200 && context.Response.StatusCode < 300
+              ? context.Response.Body.As<JObject>(preserveContent: true)
+              : null;
+              if(response != null
+                  && response.TryGetValue("usage", StringComparison.OrdinalIgnoreCase, out var usageField)
+                  && usageField is JObject usageFieldObj
+                  && usageFieldObj.TryGetValue("total_tokens", StringComparison.OrdinalIgnoreCase, out var tokensField)) {
+                  return tokensField.Value<int>();
+              }
+              return 0;
+          }" />
+        </when>
+        <!-- If sucess and streaming -->
+        <when condition="@(context.Response != null && context.Response.StatusCode >= 200 && context.Response.StatusCode < 300)">
+            <set-variable name="aiutility-payloadtotokenize" value="@{
+              string response =  context.Response.Body.As<string>(preserveContent: true);
+              var completions = new List<string>();
+              string model = null;
+              foreach(var row in response.Split('\n').Where(s => s.StartsWith("data: {")))
+              {
+                  var completion = JObject.Parse(row.Substring(6));
+                  if (model == null && completion.TryGetValue("model", out JToken modelField) && !string.IsNullOrWhiteSpace(modelField.Value<string>()))
+                  {
+                      model = modelField.Value<string>();
+                  }
+                  if (completion.TryGetValue("choices", out JToken choicesField) && choicesField is JArray choicesArrField && choicesArrField.Count > 0)
+                  {
+                      var choice  = (JObject)choicesArrField[0];
+                      if (choice.TryGetValue("text", out JToken textField))
+                      {
+                          completions.Add(textField.Value<string>());
+                      }
+                      else if (choice.TryGetValue("delta", out JToken deltaField)
+                          && deltaField is JObject delta
+                          && delta.TryGetValue("content", out JToken contentField))
+                      {
+                          completions.Add(contentField.Value<string>());
+                      }
+                  }
+              }
+              var request = context.Request.Body.As<JObject>(preserveContent: true);
+              IEnumerable<string> requestMessages = Enumerable.Empty<string>();
+              int messageCount = 0;
+              string prompt = null;
+              if (request.TryGetValue("messages", out JToken messagesField) && messagesField is JArray messages)
+              {
+                  messageCount = messages.Count;
+                  prompt = string.Join("\n", requestMessages = messages.OfType<JObject>()
+                      .SelectMany(m => m.Children<JProperty>().Select(kv => kv.Value.ToString())));
+              }
+              else if (request.TryGetValue("prompt", out JToken promptField))
+              {
+                  prompt = promptField.Value<string>();
+              }
+              return new JObject(
+                  new JProperty("model", model ?? "gpt-35-turbo"),
+                  new JProperty("extraPromptTokens", messageCount * 3 + (messageCount > 0 ? 3 : 0)), // Rules of GPT
+                  new JProperty("prompt", prompt),
+                  new JProperty("completion", string.Concat(completions))
+              );
+          }" />
+            <send-request mode="new" response-variable-name="aiutility-tokenized-response" timeout="10" ignore-error="true">
+                <set-url>@($"{{aiutility-backend-endpoint}}/llm/{((JObject)context.Variables["aiutility-payloadtotokenize"])["model"].Value<string>()}/count-tokens")</set-url>
+                    <set-method>POST</set-method>
+                    <set-header name="x-functions-key" exists-action="override">
+                        <value>{{aiutility-backend-apikey}}</value>
+                    </set-header>
+                    <set-header name="traceparent" exists-action="skip">
+                        <value>@($"00-{Guid.NewGuid().ToString("N")}-{context.RequestId.ToString("N").Substring(0, 16)}-01")</value>
+                    </set-header>
+                    <set-body>@{
+                  JObject payloadtotokenize = (JObject)context.Variables["aiutility-payloadtotokenize"];
+                  return new JObject(
+                      new JProperty("prompt", payloadtotokenize["prompt"]),
+                      new JProperty("extraPromptTokens", payloadtotokenize["extraPromptTokens"]),
+                      new JProperty("completion", payloadtotokenize["completion"])
+                  ).ToString();
+              }</set-body>
+                </send-request>
+                <set-variable name="aiutility-consumedprompttokens" value="@{
+            IResponse response = context.Variables.ContainsKey("aiutility-tokenized-response") ? (IResponse)context.Variables["aiutility-tokenized-response"] : null;
+            JObject jresponse = response != null && response.StatusCode >= 200 && response.StatusCode < 300
+              ? response.Body.As<JObject>(preserveContent: true)
+              : null;
+              if(jresponse != null
+                  && jresponse.TryGetValue("promptTokens", StringComparison.OrdinalIgnoreCase, out var usageField)) {
+                  return usageField.Value<int>();
+              }
+              return 0;
+          }" />
+                <set-variable name="aiutility-consumedcompletiontokens" value="@{
+            IResponse response = context.Variables.ContainsKey("aiutility-tokenized-response") ? (IResponse)context.Variables["aiutility-tokenized-response"] : null;
+            JObject jresponse = response != null && response.StatusCode >= 200 && response.StatusCode < 300
+              ? response.Body.As<JObject>(preserveContent: true)
+              : null;
+              if(jresponse != null
+                  && jresponse.TryGetValue("completionTokens", StringComparison.OrdinalIgnoreCase, out var usageField)) {
+                  return usageField.Value<int>();
+              }
+              return 0;
+          }" />
+                <set-variable name="aiutility-consumedtotaltokens" value="@{
+            IResponse response = context.Variables.ContainsKey("aiutility-tokenized-response") ? (IResponse)context.Variables["aiutility-tokenized-response"] : null;
+            JObject jresponse = response != null && response.StatusCode >= 200 && response.StatusCode < 300
+              ? response.Body.As<JObject>(preserveContent: true)
+              : null;
+              if(jresponse != null
+                  && jresponse.TryGetValue("totalTokens", StringComparison.OrdinalIgnoreCase, out var usageField)) {
+                  return usageField.Value<int>();
+              }
+              return 0;
+          }" />
+            </when>
+        </choose>
+    </fragment>

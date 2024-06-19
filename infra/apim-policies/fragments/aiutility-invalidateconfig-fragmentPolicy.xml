@@ -1,0 +1,38 @@
+<fragment>
+  <set-variable name="aiutility-mapping" value="@{
+    JObject config = context.Variables.GetValueOrDefault<JObject>("aiutility-config");
+    string rawMapping = context.Variables.GetValueOrDefault<string>("aiutility-mapping");
+    int retryAfter = context.Variables.GetValueOrDefault<int>("aiutility-retryafter");
+    JObject mapping = string.IsNullOrWhiteSpace(rawMapping) ? null : JObject.Parse(rawMapping);
+
+    if (mapping == null
+        || context.Product?.Id == null
+        || !mapping.TryGetValue(context.Product.Id, StringComparison.OrdinalIgnoreCase, out var productMappingField)
+        || !(productMappingField is JArray productMapping)
+        || productMapping.Count == 0
+        || config == null
+        || retryAfter <= 0)
+    {
+        return rawMapping;
+    }
+
+    JObject modelBackend = productMapping
+        .Cast<JObject>()
+        .Where(p => p.Value<int>("idx") == config.Value<int>("idx"))
+        .FirstOrDefault();
+
+    if (modelBackend == null)
+    {
+        return rawMapping;
+    }
+
+    int idx = productMapping.IndexOf(modelBackend);
+    mapping[productMappingField.Path][idx]["retryAfter"] = DateTime.UtcNow.AddSeconds(retryAfter);
+    rawMapping = mapping.ToString();
+    return rawMapping;
+  }" />
+
+  <!-- Update cache for 10min -->
+  <cache-store-value key="aiutility-mapping" value="@((string)context.Variables["aiutility-mapping"])" duration="600" caching-type="internal" />
+
+</fragment>

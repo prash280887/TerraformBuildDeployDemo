@@ -1,0 +1,52 @@
+<!-- Depends on variable 'aiutility-config' -->
+<!-- Returns variable 'aiutility-quota' -->
+<fragment>
+  <set-variable name="aiutility-quota-id" value="@(((context.Subscription?.Id ?? "anonymous") + "-" + context.Variables.GetValueOrDefault<string>("aiutility-model", "unknown")).ToLower())" />
+  <choose>
+    <!-- If tokenQuotaPerPeriod is -1, then we don't need to get the quota from the backend -->
+    <when condition="@(context.Variables.GetValueOrDefault<JObject>("aiutility-config") != null && context.Variables.GetValueOrDefault<JObject>("aiutility-config").TryGetValue("tokenQuotaPerPeriod", StringComparison.OrdinalIgnoreCase, out var tokenQuotaPerPeriod) && tokenQuotaPerPeriod.Value<int>() == -1)">
+      <set-variable name="aiutility-quota" value="@{
+        JObject config = context.Variables.GetValueOrDefault<JObject>("aiutility-config");
+        return new JObject(
+            new JProperty("startPeriod", context.User?.RegistrationDate ?? DateTime.UtcNow),
+            new JProperty("renewalPeriodInMinutes", -1),
+            new JProperty("tokenQuotaPerPeriod", -1),
+            new JProperty("tokensLeftInPeriod", -1),
+            new JProperty("minutesLeftBeforeRenewal", -1)
+        );
+      }" />
+    </when>
+    <when condition="@(context.Variables.GetValueOrDefault<JObject>("aiutility-config") != null)">
+      <send-request mode="new" response-variable-name="get-user-quota" timeout="10" ignore-error="true">
+        <set-url>@($"{{aiutility-backend-endpoint}}/quotas/{context.Variables["aiutility-quota-id"]}")</set-url>
+        <set-method>GET</set-method>
+        <set-header name="x-functions-key" exists-action="override">
+          <value>{{aiutility-backend-apikey}}</value>
+        </set-header>
+        <set-header name="traceparent" exists-action="skip">
+          <value>@($"00-{Guid.NewGuid().ToString("N")}-{context.RequestId.ToString("N").Substring(0, 16)}-01")</value>
+        </set-header>
+      </send-request>
+      <set-variable name="aiutility-quota" value="@{
+      IResponse response = context.Variables.ContainsKey("get-user-quota") ? (IResponse)context.Variables["get-user-quota"] : null;
+      JObject config = context.Variables.GetValueOrDefault<JObject>("aiutility-config");
+      int statusCode = response?.StatusCode ?? 500;
+      if (statusCode >= 200 && statusCode < 300)
+      {
+          return response.Body.As<JObject>();
+      }
+      else if (statusCode == 404)
+      {
+          return new JObject(
+              new JProperty("startPeriod", context.User?.RegistrationDate ?? DateTime.UtcNow),
+              new JProperty("renewalPeriodInMinutes", (int)config["renewalPeriodInMinutes"]),
+              new JProperty("tokenQuotaPerPeriod", (int)config["tokenQuotaPerPeriod"]),
+              new JProperty("tokensLeftInPeriod", (int)config["tokenQuotaPerPeriod"]),
+              new JProperty("minutesLeftBeforeRenewal", (int)config["renewalPeriodInMinutes"])
+          );
+      }
+      return null;
+    }" />
+    </when>
+  </choose>
+</fragment>

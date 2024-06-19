@@ -1,0 +1,181 @@
+<fragment>
+    <cache-lookup-value key="aiutility-mapping" default-value="" variable-name="aiutility-mapping" caching-type="internal" />
+    <cache-lookup-value key="aiutility-mapping-refresher" default-value="0" variable-name="aiutility-mapping-refresher" caching-type="internal" />
+    <choose>
+        <when condition="@(string.IsNullOrEmpty(context.Variables.GetValueOrDefault<string>("aiutility-mapping")) || context.Variables.GetValueOrDefault<string>("aiutility-mapping-refresher") == "0")">
+            <send-request mode="new" timeout="20" response-variable-name="get-aiutility-mapping-response" ignore-error="false">
+                <set-url>{{aiutility-mapping-blob-url}}</set-url>
+                <set-method>GET</set-method>
+                <set-header name="x-ms-version" exists-action="override">
+                    <value>2019-07-07</value>
+                </set-header>
+                <set-header name="traceparent" exists-action="skip">
+                    <value>@($"00-{Guid.NewGuid().ToString("N")}-{context.RequestId.ToString("N").Substring(0, 16)}-01")</value>
+                </set-header>
+                <authentication-managed-identity resource="https://storage.azure.com" />
+            </send-request>
+
+            <!-- Normalize the config into a flat dictionnary {Product:[Config]} -->
+            <set-variable name="aiutility-mapping" value="@{
+        string payload = ((IResponse)context.Variables["get-aiutility-mapping-response"]).Body.As<string>();
+        JObject mapping = !string.IsNullOrWhiteSpace(payload)
+              ? JObject.Parse(payload)
+              : null;
+
+          if (mapping == null)
+          {
+              return null;
+          }
+
+          var result = new JObject();
+          foreach (var product in mapping)
+          {
+              JObject productMapping = (JObject)product.Value;
+
+              string[] deploymentRestrictions = productMapping.TryGetValue("deployments", StringComparison.OrdinalIgnoreCase, out var deploymentRestrictionsField)
+                  && deploymentRestrictionsField is JArray deploymentRestrictionsTyped
+                  && deploymentRestrictionsTyped.Count > 0
+                  ? deploymentRestrictionsTyped.Values<string>().Where(d => !string.IsNullOrWhiteSpace(d)).ToArray()
+                  : Array.Empty<string>();
+
+              JObject[] models = productMapping.TryGetValue("models", StringComparison.OrdinalIgnoreCase, out var modelsField)
+                  && modelsField is JArray modelsTyped
+                  && modelsTyped.Count > 0
+                  ? modelsField.Cast<JObject>()
+                          .Where(m => !string.IsNullOrWhiteSpace(m.Value<string>("name")))
+                          .Where(b => deploymentRestrictions.Length == 0 || deploymentRestrictions.Contains(b["name"]?.ToString(), StringComparer.OrdinalIgnoreCase))
+                          .ToArray()
+                      : deploymentRestrictions.Select(d => new JObject(new JProperty("name", d)))
+                          .ToArray();
+
+              JObject[] backends = productMapping.TryGetValue("backends", StringComparison.OrdinalIgnoreCase, out var backendsField)
+                  && backendsField is JArray backendsTyped
+                  && backendsTyped.Count > 0
+                  ? backendsTyped.Cast<JObject>().ToArray()
+                  : Array.Empty<JObject>();
+
+              productMapping.Remove("backends");
+              productMapping.Remove("models");
+              productMapping.Remove("deployments");
+
+              if (models.Length == 0)
+              {
+                  models = new[] { new JObject(new JProperty("name", "*")) };
+              }
+
+              if (backends.Length == 0)
+              {
+                  backends = new[] { productMapping };
+              }
+
+              JArray flatModels = new JArray();
+              foreach (var backend in backends)
+              {
+                  JObject[] deployments = backend.TryGetValue("deployments", StringComparison.OrdinalIgnoreCase, out var deploymentsField)
+                      && deploymentsField is JArray deploymentsTyped
+                      && deploymentsTyped.Count > 0
+                      ? deploymentsTyped.Cast<JObject>().ToArray()
+                      : models.Select(m =>
+                          {
+                              var deployment = new JObject(m);
+                              deployment["model"] = deployment["name"];
+                              deployment.Remove("name");
+                              return deployment;
+                          })
+                          .ToArray();
+
+                  foreach (var deployment in deployments)
+                  {
+                      JObject model = models.FirstOrDefault(m => string.Equals(m["name"]?.ToString() ?? "*", deployment["model"]?.ToString() ?? "*", StringComparison.OrdinalIgnoreCase))
+                          ?? models.FirstOrDefault(m => string.Equals(m["name"]?.ToString() ?? "*", "*", StringComparison.OrdinalIgnoreCase));
+
+                      // Skip the model if it is not allowed on this backend
+                      if (model == null)
+                      {
+                          continue;
+                      }
+
+                      var flatModel = new JObject();
+                      flatModel.Merge(productMapping);
+                      flatModel.Merge(model);
+                      flatModel.Merge(backend);
+                      flatModel.Merge(deployment);
+
+                      flatModel["renewalPeriodInMinutes"] = flatModel.TryGetValue("renewalPeriodInMinutes", StringComparison.OrdinalIgnoreCase, out var renewalPeriodInMinutesField)
+                          && renewalPeriodInMinutesField is JToken renewalPeriodInMinutes && renewalPeriodInMinutes.Value<int>() > 0
+                          ? renewalPeriodInMinutes.Value<int>()
+                          : -1;
+                      flatModel["tokenQuotaPerPeriod"] = flatModel.TryGetValue("tokenQuotaPerPeriod", StringComparison.OrdinalIgnoreCase, out var tokenQuotaPerPeriodField)
+                          && tokenQuotaPerPeriodField is JToken tokenQuotaPerPeriod && tokenQuotaPerPeriod.Value<int>() > 0
+                          ? tokenQuotaPerPeriod.Value<int>()
+                          : -1;
+                      flatModel["tokenQuotaPerCall"] = flatModel.TryGetValue("tokenQuotaPerCall", StringComparison.OrdinalIgnoreCase, out var tokenQuotaPerCallField)
+                          && tokenQuotaPerCallField is JToken tokenQuotaPerCall && tokenQuotaPerCall.Value<int>() > 0
+                          ? tokenQuotaPerCall.Value<int>()
+                          : -1;
+
+                      flatModel["weight"] = flatModel.TryGetValue("weight", StringComparison.OrdinalIgnoreCase, out var weightField)
+                          && weightField is JToken weight && weight.Value<int>() > 0 && weight.Value<int>() < 1000
+                          ? weight.Value<int>()
+                          : 1;
+                      flatModel["priorityGroup"] = flatModel.TryGetValue("priorityGroup", StringComparison.OrdinalIgnoreCase, out var priorityField)
+                          && priorityField is JToken priority && priority.Value<int>() > 0 && priority.Value<int>() < 1000
+                          ? priority.Value<int>()
+                          : 999;
+                      flatModel["deploymentName"] = flatModel.TryGetValue("deploymentName", StringComparison.OrdinalIgnoreCase, out var deploymentNameField)
+                          && deploymentNameField is JToken deploymentName && !string.IsNullOrWhiteSpace(deploymentName.Value<string>())
+                          ? deploymentName.Value<string>()
+                          : flatModel["name"];
+                      flatModel["retryAfter"] = DateTime.MinValue;
+                      flatModel.Remove("deployments");
+                      flatModel.Remove("name");
+                      flatModels.Add(flatModel);
+                  }
+              }
+
+              // Prioritize the models, apply an index
+              JObject[] priorizedModels = flatModels
+                  .Cast<JObject>()
+                  .OrderBy(m => m["model"].ToString(), StringComparer.OrdinalIgnoreCase)
+                  .ThenBy(m => m["priorityGroup"].Value<int>())
+                  .ThenByDescending(m => m["weight"].Value<int>())
+                  .Select((m, idx) =>
+                  {
+                      m["idx"] = idx;
+                      return m;
+                  })
+                  .ToArray();
+
+              // Make priority group sequencial
+              string lastModel = null;
+              int lastPriorityGroup = 1;
+              int index = 1;
+              foreach (var model in priorizedModels)
+              {
+                  if (string.Equals(lastModel, model["model"].ToString(), StringComparison.OrdinalIgnoreCase))
+                  {
+                      if (model["priorityGroup"].Value<int>() != lastPriorityGroup)
+                      {
+                          index++;
+                      }
+                  }
+                  else
+                  {
+                      index = 1;
+                  }
+                  lastModel = model["model"].ToString();
+                  lastPriorityGroup = model["priorityGroup"].Value<int>();
+                  model["priorityGroup"] = index;
+              }
+              result[product.Key] = new JArray(priorizedModels);
+          }
+
+          return result.ToString(Newtonsoft.Json.Formatting.None);
+      }" />
+
+            <!-- Since aiutility-mapping might be updated later (and slide the expiration), use aiutility-mapping-refresher as a time keeper -->
+            <cache-store-value key="aiutility-mapping-refresher" value="1" duration="600" caching-type="internal" />
+            <cache-store-value key="aiutility-mapping" value="@((string)context.Variables["aiutility-mapping"])" duration="600" caching-type="internal" />
+        </when>
+    </choose>
+</fragment>

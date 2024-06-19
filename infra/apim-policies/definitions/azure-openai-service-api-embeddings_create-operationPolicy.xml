@@ -1,0 +1,25 @@
+<policies>
+    <inbound>
+        <base />
+        <set-variable name="payload" value="@(context.Request.Body?.As<JObject>(true))" />
+        <choose>
+            <when condition="@{
+                var config = (JObject)context.Variables["aiutility-config"];
+                var deployments = (JArray)config?["deployments"];
+                var deploymentId = context.Request.MatchedParameters["deployment-id"];
+                return deployments != null && deployments.Count > 0 && !deployments.Any(t => string.Equals(t.Value<string>(), deploymentId, StringComparison.OrdinalIgnoreCase));
+            }">
+                <include-fragment fragment-id="aiutility-returnresponse403" />
+            </when>
+        </choose>
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>

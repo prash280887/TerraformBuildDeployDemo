@@ -1,0 +1,70 @@
+<policies>
+  <inbound>
+    <base />
+    <!-- Get mapping and store it inside 'aiutility-mapping' -->
+    <include-fragment fragment-id="aiutility-getmappingconfig" />
+
+    <!-- Add +1 to the request counter -->
+    <cache-lookup-value key="aiutility-request-counter" default-value="0" variable-name="aiutility-request-counter" caching-type="internal" />
+    <cache-store-value key="aiutility-request-counter" value="@(((int.Parse((string)context.Variables["aiutility-request-counter"]) + 1) % 10000).ToString())" duration="60" caching-type="internal" />
+    <set-variable name="aiutility-model" value="@(context.Request.MatchedParameters["deployment-id"])" />
+
+    <!-- Get configuration for this aiutility-model and apply a round robin. Set 'aiutility-config' -->
+    <include-fragment fragment-id="aiutility-getconfig" />
+    <choose>
+      <when condition="@(context.Variables["aiutility-config"] != null)">
+        <!-- Get quota from backend. Set 'aiutility-quota' -->
+        <include-fragment fragment-id="aiutility-getquota" />
+        <!-- Set backend based on 'aiutility-config'. Gate this based on 'aiutility-quota'. -->
+        <include-fragment fragment-id="aiutility-setbackend" />
+        <!-- Rewrite here since backend does not support rewrite-uri. /!\ All deployment name for a same model should be the same -->
+        <!-- Prefix call with openai and replace deploymentId with the actual deploymentName -->
+        <rewrite-uri template="@("openai" + context.Operation.UrlTemplate.Replace("{deployment-id}", ((JObject)context.Variables["aiutility-config"]).Value<string>("deploymentName")))" />
+        <!-- Prefix call with openai and replace deploymentId with the actual deploymentName -->
+        <!--<rewrite-uri template="@("openai" + context.Operation.UrlTemplate.Replace("{deployment-id}", ((JObject)context.Variables["aiutility-config"]).Value<string>("deploymentName")))" />-->
+        <set-backend-service base-url="@(((JObject)context.Variables["aiutility-config"])["endpoint"].ToString())" />
+      </when>
+      <otherwise>
+        <include-fragment fragment-id="aiutility-returnresponse403" />
+      </otherwise>
+    </choose>
+  </inbound>
+  <backend>
+    <!--
+      <retry condition="@(context.Response != null && (context.Response.StatusCode == 429 || context.Response.StatusCode >= 500))" count="3" interval="0">
+        <choose>
+          <when condition="@(context.Variables.GetValueOrDefault<JObject>("aiutility-config", null) != null && context.Response != null)">
+            <set-variable name="aiutility-retryafter" value="@(Convert.ToInt32(context.Response.Headers.GetValueOrDefault("Retry-After", "10")))" />
+            <include-fragment fragment-id="aiutility-invalidateconfig" />
+          </when>
+        </choose>
+        <include-fragment fragment-id="aiutility-getconfig" />
+        <set-variable name="aiutility-request-counter" value="@((int.Parse((string)context.Variables["aiutility-request-counter"]) + 1).ToString())" />
+        <set-backend-service base-url="@(((JObject)context.Variables["aiutility-config"])["endpoint"].ToString())" />
+        <forward-request timeout="120" />
+      </retry>
+    -->
+    <forward-request timeout="240" />
+  </backend>
+  <outbound>
+    <base />
+
+    <!-- If backend failed with 429 or 500, remove it from the pool -->
+    <choose>
+      <when condition="@(context.Variables.GetValueOrDefault<JObject>("aiutility-config", null) != null && context.Response != null && (context.Response.StatusCode == 429 || context.Response.StatusCode >= 500))">
+        <set-variable name="aiutility-retryafter" value="@(Convert.ToInt32(context.Response.Headers.GetValueOrDefault("Retry-After", "10")))" />
+        <include-fragment fragment-id="aiutility-invalidateconfig" />
+      </when>
+    </choose>
+
+    <!-- Get consumed token from openai response payload and save it inside 'aiutility-consumed-tokens' -->
+    <include-fragment fragment-id="openai-getconsumedtokens" />
+    <!-- If 'aiutility-config', 'aiutility-consumedtokens' and 'aiutility-quota' are set, save it to aiutility backend -->
+    <include-fragment fragment-id="aiutility-saveconsumedtokens" />
+    <!-- Update headers with based on 'aiutility-consumedtokens' and 'aiutility-quota' -->
+    <include-fragment fragment-id="aiutility-setquotaheaders" />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>

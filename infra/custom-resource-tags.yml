@@ -1,0 +1,12 @@
+tag_groups:
+  - name: required_tags
+    tags:
+    - name: bu
+      value:
+        default: 102153
+    - name: division
+      value:
+        default: CORP US
+    - name: application_name
+      value:
+        default: AI Utility

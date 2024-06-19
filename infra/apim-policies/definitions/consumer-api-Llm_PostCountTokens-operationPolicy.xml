@@ -1,0 +1,27 @@
+<policies>
+  <inbound>
+    <base />
+
+    <!-- Get mapping and store it inside 'aiutility-mapping' -->
+    <include-fragment fragment-id="aiutility-getmappingconfig" />
+
+    <set-variable name="aiutility-model" value="@(context.Request.MatchedParameters["deployment-id"])" />
+
+    <!-- Get configuration for this aiutility-model and apply a round robin. Set 'aiutility-config' -->
+    <include-fragment fragment-id="aiutility-getconfig" />
+
+    <!-- Replace deploymentId with the actual deploymentName -->
+    <rewrite-uri template="@(context.Operation.UrlTemplate.Replace("{deployment-id}", (context.Variables.GetValueOrDefault<JObject>("aiutility-config")?.Value<string>("model") ?? context.Variables.GetValueOrDefault<string>("aiutility-model"))))" />
+
+    <set-backend-service backend-id="aoais-aiutility-func" />
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>

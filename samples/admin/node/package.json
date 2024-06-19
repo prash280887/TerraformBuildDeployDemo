@@ -1,0 +1,15 @@
+{
+  "name": "guardian-admin-sample",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "enroll-user": "node enroll-user.js",
+    "delete-user": "node delete-user.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}

@@ -1,0 +1,39 @@
+<policies>
+  <inbound>
+    <base />
+
+    <!-- Get mapping and store it inside 'aiutility-mapping' -->
+    <include-fragment fragment-id="aiutility-getmappingconfig" />
+
+    <set-variable name="aiutility-model" value="@(context.Request.MatchedParameters["deployment-id"])" />
+
+    <!-- Get configuration for this aiutility-model and apply a round robin. Set 'aiutility-config' -->
+    <include-fragment fragment-id="aiutility-getconfig" />
+
+    <choose>
+      <when condition="@(context.Variables["aiutility-config"] != null)">
+        <!-- Get quota from backend. Set 'aiutility-quota' -->
+        <include-fragment fragment-id="aiutility-getquota" />
+
+        <return-response>
+          <set-header name="content-type" exists-action="override">
+            <value>application/json</value>
+          </set-header>
+          <set-body>@(((JObject)context.Variables["aiutility-quota"]).ToString())</set-body>
+        </return-response>
+      </when>
+      <otherwise>
+        <include-fragment fragment-id="aiutility-returnresponse403" />
+      </otherwise>
+    </choose>
+  </inbound>
+  <backend>
+    <base />
+  </backend>
+  <outbound>
+    <base />
+  </outbound>
+  <on-error>
+    <base />
+  </on-error>
+</policies>

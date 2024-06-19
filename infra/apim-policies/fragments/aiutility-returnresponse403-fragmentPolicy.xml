@@ -1,0 +1,17 @@
+<fragment>
+	<return-response>
+		<set-status code="403" reason="Forbidden" />
+		<set-header name="content-type" exists-action="override">
+			<value>application/json</value>
+		</set-header>
+		<set-body>
+			{
+				"error": {
+					"code": "403",
+					"message": "This subscription is not allowed to use this API.",
+					"source": "aiutility"
+				}
+			}
+		</set-body>
+	</return-response>
+</fragment>

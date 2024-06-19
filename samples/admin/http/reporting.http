@@ -1,0 +1,25 @@
+@endpoint=http://localhost:7057/admin
+@apiKey=XXXXXX
+@report1=apimusermapping
+@report2=laquerytest
+
+###
+
+POST {{endpoint}}/reports/{{report1}}/generate
+Content-Type: application/json
+api-key: {{apiKey}}
+
+{
+
+}
+
+###
+
+POST {{endpoint}}/reports/{{report2}}/generate
+Content-Type: application/json
+api-key: {{apiKey}}
+
+{
+    "startPeriod": "2023-07-01T00:00:00.000Z",
+    "endPeriod": "2023-09-06T00:00:00.000Z"
+}

@@ -1,0 +1,55 @@
+<policies>
+    <inbound>
+        <base />
+        <set-variable name="payload" value="@(context.Request.Body?.As<JObject>(true))" />
+        <choose>
+            <when condition="@{
+                var config = (JObject)context.Variables["aiutility-config"];
+                var deployments = (JArray)config?["deployments"];
+                var deploymentId = context.Request.MatchedParameters["deployment-id"];
+                return deployments != null && deployments.Count > 0 && !deployments.Any(t => string.Equals(t.Value<string>(), deploymentId, StringComparison.OrdinalIgnoreCase));
+            }">
+                <include-fragment fragment-id="aiutility-returnresponse403" />
+            </when>
+            <otherwise>
+                <set-body>@{
+                    var payload = (JObject)context.Variables["payload"];
+                    var config = (JObject)context.Variables["aiutility-config"];
+                    if (config != null)
+                    {
+                        var tokenQuotaPerCall = (int?)config["tokenQuotaPerCall"];
+                        if (tokenQuotaPerCall != null && tokenQuotaPerCall > 0)
+                        {
+                            payload["max_tokens"] = tokenQuotaPerCall;
+                        }
+
+                        var defaultTemperature = (float?)config["defaultTemperature"];
+                        var temperature = (float?)payload["temperature"];
+                        if (defaultTemperature != null && temperature == null)
+                        {
+                            payload["temperature"] = defaultTemperature;
+                        }
+
+                        var preprompt = (string)config["injectedPreprompt"];
+                        var prompt = payload["prompt"]?.ToString();
+                        if (!string.IsNullOrWhiteSpace(preprompt))
+                        {
+                            payload["prompt"] = preprompt + prompt;
+                        }
+                    }
+
+                    return payload.ToString();
+                }</set-body>
+            </otherwise>
+        </choose>
+    </inbound>
+    <backend>
+        <base />
+    </backend>
+    <outbound>
+        <base />
+    </outbound>
+    <on-error>
+        <base />
+    </on-error>
+</policies>

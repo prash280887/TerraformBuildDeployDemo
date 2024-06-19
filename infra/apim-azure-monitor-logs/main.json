@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.23.1.45101",
+      "templateHash": "18090807703813072280"
+    }
+  },
+  "parameters": {
+    "apimName": {
+      "type": "String"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.ApiManagement/service/loggers",
+      "apiVersion": "2023-03-01-preview",
+      "name": "[format('{0}/azuremonitor', parameters('apimName'))]",
+      "properties": {
+        "loggerType": "azureMonitor",
+        "isBuffered": true
+      }
+    },
+    {
+      "type": "Microsoft.ApiManagement/service/diagnostics",
+      "apiVersion": "2023-03-01-preview",
+      "name": "[format('{0}/azuremonitor', parameters('apimName'))]",
+      "properties": {
+        "verbosity": "information",
+        "logClientIp": true,
+        "loggerId": "[resourceId('Microsoft.ApiManagement/service/loggers', split(format('{0}/azuremonitor', parameters('apimName')), '/')[0], split(format('{0}/azuremonitor', parameters('apimName')), '/')[1])]",
+        "sampling": {
+          "samplingType": "fixed",
+          "percentage": 100
+        },
+        "frontend": {
+          "request": {
+            "headers": [],
+            "body": {
+              "bytes": 0
+            }
+          },
+          "response": {
+            "headers": [],
+            "body": {
+              "bytes": 0
+            }
+          }
+        },
+        "backend": {
+          "request": {
+            "headers": [],
+            "body": {
+              "bytes": 8192
+            }
+          },
+          "response": {
+            "headers": [],
+            "body": {
+              "bytes": 8192
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/loggers', split(format('{0}/azuremonitor', parameters('apimName')), '/')[0], split(format('{0}/azuremonitor', parameters('apimName')), '/')[1])]"
+      ]
+    }
+  ]
+}

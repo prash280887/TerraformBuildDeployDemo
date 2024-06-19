@@ -1,0 +1,44 @@
+<fragment>
+  <set-variable name="aiutility-quota-id" value="@(((context.Subscription?.Id ?? "anonymous") + "-" + context.Variables.GetValueOrDefault<string>("aiutility-model")).ToLower())" />
+  <choose>
+    <when condition="@(context.Variables.GetValueOrDefault<JObject>("aiutility-config", null) != null && context.Variables.GetValueOrDefault<int>("aiutility-consumedtotaltokens") > 0 && context.Variables.GetValueOrDefault<JObject>("aiutility-quota", null) != null)">
+      <choose>
+        <!-- Save consumed tokens to the quota backend only if not unlimited (-1) -->
+        <when condition="@(context.Variables.GetValueOrDefault<JObject>("aiutility-quota").TryGetValue("tokenQuotaPerPeriod", out var tokenQuotaPerPeriodField) && tokenQuotaPerPeriodField.Value<int>() > 0)">
+          <send-request mode="new" response-variable-name="set-user-quota" timeout="10" ignore-error="true">
+            <set-url>@($"{{aiutility-backend-endpoint}}/quotas/{context.Variables["aiutility-quota-id"]}")</set-url>
+            <set-method>POST</set-method>
+            <set-header name="x-functions-key" exists-action="override">
+              <value>{{aiutility-backend-apikey}}</value>
+            </set-header>
+            <set-header name="traceparent" exists-action="skip">
+              <value>@($"00-{Guid.NewGuid().ToString("N")}-{context.RequestId.ToString("N").Substring(0, 16)}-01")</value>
+            </set-header>
+            <set-body>@{
+              JObject userQuota = (JObject)context.Variables["aiutility-quota"];
+              JObject config = (JObject)context.Variables["aiutility-config"];
+              return new JObject(
+                new JProperty("renewalPeriodInMinutes", (int)config["renewalPeriodInMinutes"]),
+                new JProperty("tokenQuotaPerPeriod", (int)config["tokenQuotaPerPeriod"]),
+                new JProperty("tokensConsumed", (int)context.Variables["aiutility-consumedtotaltokens"]),
+                new JProperty("startPeriod", context.User?.RegistrationDate)
+              ).ToString();
+            }</set-body>
+          </send-request>
+        </when>
+      </choose>
+
+      <trace source="aiutility" severity="information">
+        <message>aiutility.consumption</message>
+        <metadata name="apiId" value="@(context.Api?.Id ?? "undefined")" />
+        <metadata name="productId" value="@(context.Product?.Id ?? "undefined")" />
+        <metadata name="userId" value="@(context.User?.Id ?? "undefined")" />
+        <metadata name="deployment" value="@(context.Variables.GetValueOrDefault<string>("aiutility-model"))" />
+        <metadata name="promptTokens" value="@(context.Variables.GetValueOrDefault<int>("aiutility-consumedprompttokens").ToString())" />
+        <metadata name="completionTokens" value="@(context.Variables.GetValueOrDefault<int>("aiutility-consumedcompletiontokens").ToString())" />
+        <metadata name="totalTokens" value="@(context.Variables.GetValueOrDefault<int>("aiutility-consumedtotaltokens").ToString())" />
+        <metadata name="requestId" value="@(context.RequestId.ToString())" />
+      </trace>
+    </when>
+  </choose>
+</fragment>

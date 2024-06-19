@@ -1,0 +1,55 @@
+<fragment>
+    <set-variable name="aiutility-config" value="@{
+        string config = context.Variables.GetValueOrDefault<string>("aiutility-mapping");
+        JObject mapping = string.IsNullOrWhiteSpace(config) ? null : JObject.Parse(config);
+        string modelName = context.Variables.GetValueOrDefault<string>("aiutility-model");
+
+        if (string.IsNullOrEmpty(modelName)
+            || mapping == null
+            || context.Product?.Id == null
+            || !mapping.TryGetValue(context.Product.Id, StringComparison.OrdinalIgnoreCase, out var productMappingField)
+            || !(productMappingField is JArray productMapping)
+            || productMapping.Count == 0)
+        {
+            return null;
+        }
+
+        JObject[] modelBackends = productMapping
+            .Cast<JObject>()
+            .Where(p
+                => string.Equals(p.Value<string>("model"), modelName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(p.Value<string>("model"), "*", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (modelBackends.Length == 0)
+        {
+            return null;
+        }
+
+        JObject[] availableBackends = modelBackends.Where(modelBackend => modelBackend.Value<DateTime>("retryAfter") < DateTime.UtcNow).ToArray();
+        availableBackends = availableBackends.Where(modelBackend => modelBackend.Value<int>("priorityGroup") == availableBackends.Select(p => p.Value<int>("priorityGroup")).Min())
+            .ToArray();
+
+        // Select a backend based on the weight
+        var totalWeight = availableBackends.Sum(p => p.Value<int>("weight"));
+        var selectedIndex = totalWeight > 1 ? new Random(context.RequestId.GetHashCode()).Next(1, totalWeight + 1) : 0;
+        JObject backend = modelBackends[0];
+        if (availableBackends.Length > 0  && totalWeight > 1)
+        {
+          int index = 0;
+          int weight = availableBackends[index].Value<int>("weight");
+          while (selectedIndex > weight)
+          {
+              index++;
+              weight += availableBackends[index].Value<int>("weight");
+          }
+          backend = availableBackends[index];
+        }
+
+        backend = new JObject(backend);
+        backend["model"] = backend.Value<string>("name") == "*" ? modelName : backend["model"];
+        backend["deploymentName"] = backend.Value<string>("deploymentName") == "*" ? modelName : backend["deploymentName"];
+
+        return backend;
+	}" />
+</fragment>
